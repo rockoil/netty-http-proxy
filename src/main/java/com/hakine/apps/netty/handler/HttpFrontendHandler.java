@@ -3,9 +3,12 @@ package com.hakine.apps.netty.handler;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
+import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.FullHttpRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLEngine;
 
 
 public class HttpFrontendHandler extends ChannelInboundHandlerAdapter {
@@ -35,7 +38,16 @@ public class HttpFrontendHandler extends ChannelInboundHandlerAdapter {
         Bootstrap b = new Bootstrap();
         b.group(inboundChannel.eventLoop())
                 .channel(ctx.channel().getClass())
-                .handler(new HttpBackendHandler(inboundChannel))
+                .handler(new ChannelInitializer<SocketChannel>() {
+
+                    @Override
+                    protected void initChannel(SocketChannel socketChannel) throws Exception {
+                        ChannelPipeline pipeline = socketChannel.pipeline();
+
+                        pipeline.addLast(new HttpBackendHandler(inboundChannel));
+                    }
+                })
+                //.handler(new HttpBackendHandler(inboundChannel))
                 .option(ChannelOption.AUTO_READ, false);
 
         ChannelFuture f = b.connect(remoteHost, remotePort);
