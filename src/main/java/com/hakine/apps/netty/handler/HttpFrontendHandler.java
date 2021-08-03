@@ -4,11 +4,16 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.*;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import io.netty.util.CharsetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLEngine;
+import java.nio.charset.StandardCharsets;
 
 
 public class HttpFrontendHandler extends ChannelInboundHandlerAdapter {
@@ -44,7 +49,16 @@ public class HttpFrontendHandler extends ChannelInboundHandlerAdapter {
                     protected void initChannel(SocketChannel socketChannel) throws Exception {
                         ChannelPipeline pipeline = socketChannel.pipeline();
 
-                        pipeline.addLast(new HttpBackendHandler(inboundChannel));
+                        // 원격접속 주소가 ssl 일경우 context를 추가함.
+                        if(isSsl) {
+                            SslContext sslCtx = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
+                            pipeline.addLast(sslCtx.newHandler(socketChannel.alloc()));
+                        }
+
+                        pipeline
+                                .addLast(new HttpClientCodec())
+                                .addLast(new HttpObjectAggregator(102948573, true))
+                                .addLast(new HttpBackendHandler(inboundChannel));
                     }
                 })
                 //.handler(new HttpBackendHandler(inboundChannel))
@@ -69,25 +83,37 @@ public class HttpFrontendHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if(outboundChannel.isActive()) {
 
+            // Request일 경우
             if(msg instanceof FullHttpRequest) {
                 FullHttpRequest request = (FullHttpRequest) msg;
 
+                // 원격 접속의 request 재설정
+                request.setUri("https://localhost:8030/api/test");
+                request.setMethod(HttpMethod.POST);
+                request.headers().set(HttpHeaderNames.ACCEPT_ENCODING, HttpHeaderValues.APPLICATION_JSON);
+                request.headers().set(HttpHeaderNames.CONTENT_ENCODING, HttpHeaderValues.APPLICATION_JSON);
+
+                String jsonStr = "{\"test\": \"1234\"}";
+
+                request.content().clear();
+                request.content().writeBytes(jsonStr.getBytes(StandardCharsets.UTF_8));
+
+                // 헤더에 요청 Body 값을 재설정 한다.
+                request.headers().set(HttpHeaderNames.CONTENT_LENGTH, request.content().readableBytes());
 
 
-            }
-
-
-            outboundChannel.writeAndFlush(msg).addListener(new ChannelFutureListener() {
-                @Override
-                public void operationComplete(ChannelFuture channelFuture) throws Exception {
-                    if(channelFuture.isSuccess()) {
-                        // was able to flush out data, start to read the next chunk
-                        ctx.channel().read();
-                    } else {
-                        channelFuture.channel().close();
+                outboundChannel.writeAndFlush(request).addListener(new ChannelFutureListener() {
+                    @Override
+                    public void operationComplete(ChannelFuture channelFuture) throws Exception {
+                        if(channelFuture.isSuccess()) {
+                            // was able to flush out data, start to read the next chunk
+                            ctx.channel().read();
+                        } else {
+                            channelFuture.channel().close();
+                        }
                     }
-                }
-            });
+                });
+            }
         }
     }
 

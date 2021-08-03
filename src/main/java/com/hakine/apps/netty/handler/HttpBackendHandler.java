@@ -1,6 +1,7 @@
 package com.hakine.apps.netty.handler;
 
 import io.netty.channel.*;
+import io.netty.handler.codec.http.FullHttpResponse;
 
 public class HttpBackendHandler extends ChannelInboundHandlerAdapter {
 
@@ -17,6 +18,12 @@ public class HttpBackendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+
+        if(msg instanceof FullHttpResponse) {
+
+        }
+
+
         inboundChannel.writeAndFlush(msg).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture channelFuture) throws Exception {
